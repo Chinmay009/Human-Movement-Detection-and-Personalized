@@ -1,0 +1,84 @@
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.preprocessing import StandardScaler
+from torch.utils.data import DataLoader, TensorDataset
+import pickle
+from sklearn.metrics import accuracy_score, classification_report
+
+X_train = np.loadtxt("UCI HAR Dataset/train/X_train.txt")
+y_train = np.loadtxt("UCI HAR Dataset/train/y_train.txt")
+X_test = np.loadtxt("UCI HAR Dataset/test/X_test.txt")
+y_test = np.loadtxt("UCI HAR Dataset/test/y_test.txt")
+
+y_train = y_train.astype(int) - 1
+y_test = y_test.astype(int) - 1
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+
+train_loader = DataLoader(TensorDataset(X_train_tensor, y_train_tensor), batch_size=64, shuffle=True)
+test_loader = DataLoader(TensorDataset(X_test_tensor, y_test_tensor), batch_size=64)
+
+class HARNet(nn.Module):
+    def __init__(self):
+        super(HARNet, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(561, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 6)
+        )
+    def forward(self, x):
+        return self.model(x)
+
+model = HARNet()
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+for epoch in range(20):
+    model.train()
+    total_loss = 0
+    for xb, yb in train_loader:
+        optimizer.zero_grad()
+        outputs = model(xb)
+        loss = criterion(outputs, yb)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    print(f"Epoch {epoch+1}/20, Loss: {total_loss:.4f}")
+
+model.eval()
+all_preds, all_true, all_probs = [], [], []
+
+with torch.no_grad():
+    for xb, yb in test_loader:
+        outputs = model(xb)
+        probs = torch.softmax(outputs, dim=1)
+        preds = torch.argmax(probs, dim=1)
+        all_preds.extend(preds.numpy())
+        all_true.extend(yb.numpy())
+        all_probs.extend(probs.numpy())
+
+accuracy = accuracy_score(all_true, all_preds)
+print("\nPyTorch NN Accuracy:", accuracy)
+print("\nClassification Report:\n", classification_report(all_true, all_preds))
+
+all_probs = np.array(all_probs)
+confidence = all_probs.max(axis=1)
+threshold = 0.6
+uncertain = np.sum(confidence < threshold)
+print("\nUncertain predictions:", uncertain)
+
+with open("nn_activity_model.pkl", "wb") as f:
+    pickle.dump({"model_state_dict": model.state_dict(), "scaler": scaler}, f)
