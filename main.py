@@ -1,7 +1,7 @@
 import pickle
 import torch
 import numpy as np
-from NN_model import HARNet
+from NN_model import HumanActivityNet
 from config import USER_PROFILE
 from config import THRESHOLDS
 from llm import generate_advisory
@@ -10,7 +10,7 @@ from llm import generate_advisory
 with open("nn_activity_model.pkl", "rb") as f:
     checkpoint = pickle.load(f)
 
-model = HARNet()
+model = HumanActivityNet()
 model.load_state_dict(checkpoint["model_state_dict"])
 model.eval()
 scaler = checkpoint["scaler"]
